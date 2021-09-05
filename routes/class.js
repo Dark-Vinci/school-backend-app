@@ -1,41 +1,53 @@
 const express = require('express');
+const mongoose = require('mongoose');
+
 const router = express.Router();
+
 const { Class, validate, 
     validatePut, validateR,
     validateStudents, validateStudent,
     validateTeacher, validateSubjects,
     validateSubject
 } = require('../model/classShema');
-const mongoose = require('mongoose');
 const { Teacher } = require('../model/teacher');
 const { Student } = require('../model/studentM');
 const { Subject } = require('../model/subjectM');
-const wrap = require('../middlewares/wrap');
+
+const wrapper = require('../middlewares/wrap');
 const auth = require('../middlewares/auth');
 const admin = require('../middlewares/admin');
 const superAdmin = require('../middlewares/superAdmin');
+const idValidator = require('../middlewares/idValidator');
+const bodyValidator = require('../middlewares/bodyValidator');
 
 const val = mongoose.Types.ObjectId;
 
-router.get('/', [ auth, admin, superAdmin ], wrap (async (req, res) => {
+const superAdminMiddleware = [ auth, admin, superAdmin ];
+
+router.get('/all-classes', adminMiddleware, wrapper ( async (req, res) => {
     const classes = await Class.find();
-    res.send(classes);
+
+    res.status(200).json({
+        status: 200,
+        message: 'success',
+        data: classes
+    })
 }));
 
-router.get('/:id', [ auth, admin ], wrap( async (req, res) => {
-    const id = req.params.id;
+const here = [ idValidator, auth, admin ]
+router.get('/:id', [ auth, admin ], wrapper ( async (req, res) => {
+    const { id } = req.params;
 
-    if(!val.isValid(id)) {
-        return res.status(404).send('i don taya for you boss');
+    const classe = await Class.findById(id)
+        .populate('subjects')
+        .populate('students');
+        
+    if (!classe) {
+        return res.status(404).send('no such class in the database..')
     } else {
-        const classe = await Class.findById(id)
-            .populate('subjects')
-            .populate('students');
-        if (!classe) {
-            return res.status(404).send('no such class in the database..')
-        } else {
-            res.send(classe)
-        }}}));
+        res.send(classe)
+    }
+}));
 
 router.post('/', [ auth, admin, superAdmin ] , wrap( async (req, res) => {
     const { error } = validateR(req.body);

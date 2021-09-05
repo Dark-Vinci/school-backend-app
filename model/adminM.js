@@ -115,11 +115,6 @@ function validatePut(inp) {
             .min(1)
             .max(10),
         
-        email: Joi.string()
-            .email()
-            .min(5)
-            .max(20),
-        
         firstName: Joi.string()
             .min(3)
             .max(30),
@@ -128,17 +123,13 @@ function validatePut(inp) {
             .min(3)
             .max(30),
 
-        gender: Joi.string()
-            .min(4)
-            .max(30),
-        
         phoneNumber: Joi.string()
             .required()
             .min(4)
             .max(30)
     });
 
-    const result = schema.validate();
+    const result = schema.validate(inp);
     return result;
 }
 
@@ -174,8 +165,10 @@ function validateLogin(inp) {
     return result;
 }
 
-module.exports.Admin = Admin;
-module.exports.validate = validate;
-module.exports.validatePut = validatePut;
-module.exports.validatePass = validatePass;
-module.exports.validateLogin = validateLogin;
+module.exports = {
+    Admin,
+    validate,
+    validatePut,
+    validatePass,
+    validateLogin
+}

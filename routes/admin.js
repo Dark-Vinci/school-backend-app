@@ -1,210 +1,235 @@
 const express = require('express');
-const router = express.Router();
-const { Admin, validate, validatePut, validateLogin, validatePass } = require('../model/adminM');
-const mongoose = require('mongoose');
 const _ = require('lodash');
 const bcrypt = require('bcrypt');
-const wrap = require('../middlewares/wrap');
+
+const router = express.Router();
+
+const { Parent } = require('../model/parentM');
+const { validatePost, Post } = require('../model/post');
+const { 
+    Admin, validate, validatePut, 
+    validateLogin, validatePass 
+} = require('../model/adminM');
+
+const wrapper = require('../middlewares/wrap');
 const auth = require('../middlewares/auth');
 const admin = require('../middlewares/admin');
 const superAdmin = require('../middlewares/superAdmin');
 const ultimateAdmin = require('../middlewares/alti');
-const { Parent } = require('../model/parentM');
-const { Message } = require('../model/messageM');
-const { validatePost, Post } = require('../model/post');
+const idValidator = require('../middlewares/idValidator');
+const bodyValidator = require('../middlewares/bodyValidator');
 
-const val = mongoose.Types.ObjectId;
+const adminMiddleware = [ auth, admin ];
+const idAdminMiddleware = [ idValidator, auth, admin ];
+const messageIdValidator = [idValidator, bodyValidator(validatePost) ];
+const editMiddleware = [ bodyValidator(validatePut), auth, admin ];
+const changePasswordMiddleware = [ bodyValidator(validatePass), auth, admin];
+const deleteMiddleware = [ idValidator, auth, admin, superAdmin, ultimateAdmin ];
 
-router.get('/', [ auth, admin ], wrap( async (req, res) => {
+router.get('/all-admin', adminMiddleware, wrapper ( async (req, res) => {
     const admins = await Admin.find()
-        .select('firstName email phoneNumber power _id');
-    res.send(admins);
+        .select({ password: 0 });
+
+    res.status(200).json({
+        status: 200,
+        message: 'success',
+        data: admins
+    });
 }));
 
-router.get('/:id',[ auth, admin ], wrap(async (req, res) => {
+router.get('/:id', idAdminMiddleware, wrapper ( async (req, res) => {
     const id = req.params.id;
 
-    if (!val.isValid(id)) {
-        res.status(404).send('you might be lost amn...')
-    } else {
-        const admin = await Admin.findById(id);
-        if (!admin) {
-            return res.status(404).send('you still might be lost');
-        } else {
-            const toSend = _.pick(admin, ['firstName', 'lastName', 'gender']);
-            res.send(toSend);
-        }}}));
+    const admin = await Admin.findById(id);
 
-        // ,[ auth, admin, superAdmin ]
-
-router.post('/' , wrap( async (req, res) => {
-    const { error } = validate(req.body);
-    if (error) {
-        return res.status(400).send(error.details[0].message)
+    if (!admin) {
+        return res.status(404).json({
+            status: 404,
+            message: 'theres no such admin with the id in the db'
+        });
     } else {
-        let { password, gender, firstName, lastName, phoneNumber, power, email } = req.body;
+        const toSend = _.pick(admin, ['firstName', 'lastName', 'gender']);
         
-        const ad = await Admin.findOne({ email: email });
-        if (ad) {
-            return res.status(400).send('we have an admin with same email')
-        } else {
-            const salt = await bcrypt.genSalt(10);
-            password  = await bcrypt.hash(password, salt);
+        res.status(200).json({
+            status: 200,
+            message: 'success',
+            data: toSend
+        });
+    }
+}));
 
-            const admin = new Admin({
-                gender,
-                firstName,
-                lastName,
-                phoneNumber,
-                power,
-                email,
-                password
-            });
+router.post('/create' , bodyValidator(validate), wrapper ( async (req, res) => {
+    let { password, gender, firstName, lastName, phoneNumber, power, email } = req.body;
+    
+    const ad = await Admin.findOne({ email: email });
 
-            const admins = await Admin.find();
-            if (admins.length == 0) {
-                admin.power = 10;
-            }
+    if (ad) {
+        return res.status(400).json({
+            status: 400,
+            message: 'we have an admin with same email'
+        });
+    } else {
+        const salt = await bcrypt.genSalt(10);
+        password  = await bcrypt.hash(password, salt);
 
-            try {
-                await admin.save();
-                const token = admin.generateToken();
-                const toSend = _.pick(admin, ['firstName', 'lastName', 'phoneNumber', 'gender', 'email'])
-                res.header('x-auth-token', token).send(toSend);
-            } catch (ex) {
-                let message = '';
+        const admin = new Admin({
+            gender, firstName, lastName,
+            phoneNumber, power, email, password
+        });
 
-                for (field in ex.errors) {
-                    message += " & " + ex.errors[field].message;
-                }
+        const admins = await Admin.find();
+        if (admins.length == 0) {
+            admin.power = 10;
+        }
 
-                res.status(400).send(message);
-            }}}}));
+        await admin.save();
 
+        const token = admin.generateToken();
+        const toSend = _.pick(admin, ['firstName', 'lastName', 'phoneNumber', 'gender', 'email'])
+        
+        res.status(201).header('x-auth-token', token).json({
+            status: 201,
+            message: 'success',
+            data: toSend
+        });
+    }
+}));
 
-router.post('/:parentId/message',  wrap(async (req, res) => {
+router.post('/message/:parentId/',  messageIdValidator, wrapper ( async (req, res) => {
     const pId = req.params.parentId;
 
-    if (!val.isValid(pId)) {
-        return res.status(404).send('invalid parent id')
+    const parent = await Parent.findById(pId);
+    if (!parent) {
+        return res.status(404).json({
+            status: 404,
+            message: 'invalid parent id'
+        })
     } else {
-        const parent = await Parent.findById(pId);
-        if (!parent) {
-            return res.status(404).send('invalid parent id')
-        } else {
-            const { error } = validatePost(req.body);
-            if (error) {
-                return res.staus(400).send(error.details[0].message);
-            } else {
-                const { title, body1, body2, footer } = req.body;
-                const message = new Post({ 
-                    title,
-                    body1, 
-                    body2,
-                    footer
-                });
+        const { title, body1, body2, footer } = req.body;
 
-                parent.messages.push(message);
-                await parent.save();
-                res.send('message sent...');
-            }
-        }
+        const message = new Post({ 
+            title, body1, 
+            body2, footer
+        });
+
+        parent.messages.push(message);
+        await parent.save();
+        
+        res.status(201).json({
+            status: 201,
+            message: 'success',
+            data: 'message sent...'
+        })
     }
 }))
 
-router.post('/login', wrap( async (req, res) => {
-    const { error } = validateLogin(req.body);
-    if (error) {
-        return res.status(400).send(error.details[0].message);
-    } else {
-        const { email, password } = req.body;
-        const admin = await Admin.findOne({ email: email });
-        if (!admin) {
-            res.status(400).send('invalid email or password...');
-        } else {
-            const valid = await bcrypt.compare(password, admin.password);
-            
-            if (!valid) {
-                return res.status(400).send('invalid email or password..')
-            } else {
-                const token = admin.generateToken();
-                res.header('x-auth-token', token).send('youre welcome back ' + admin.firstName )
-            }}}}));
+router.post('/login',  bodyValidator(validateLogin), wrapper ( async (req, res) => {
+    const { email, password } = req.body;
 
-router.put('/:id', [ auth, admin, superAdmin ], wrap( async (req, res) => {
+    const admin = await Admin.findOne({ email: email });
+
+    if (!admin) {
+        res.status(400).json({
+            status: 400,
+            message: 'invalid email or password...'
+        })
+    } else {
+        const valid = await bcrypt.compare(password, admin.password);
+        
+        if (!valid) {
+            return res.status(400).json({
+                status: 400,
+                message: 'invalid email or password..'
+            })
+        } else {
+            const token = admin.generateToken();
+
+            res.header('x-auth-token', token).json({
+                status: 200,
+                message: 'success',
+                data: 'youre welcome back ' + admin.firstName
+            })
+        }
+    }
+}));
+
+router.put('/edit', editMiddleware, wrapper ( async (req, res) => {
     // only parent;
-    const id = req.params.id;
+    const id = req.user._id;
 
-    if (!val.isValid(id)) {
-        return res.status(404).send('youre most likey on the wrong road')
+    const { power, firstName, lastName, phoneNumber } = req.body;
+
+    const admin = await Admin.findById(id);
+
+    if (!admin) {
+        return res.status(400).json({
+            status: 400,
+            message: 'no such person in the db'
+        });
     } else {
-        const { error } = validatePut(req.body);
-        if (error) {
-            return res.status(400).send(error.details[0].message);
-        } else {
-            const keys = Object.keys(req.body);
-            if (keys.includes('password')) {
-                return res.status(400).send('this is not the right place to change password');
-            } else {
-                const admin = await Admin.findById(id);
-                if (!admin) {
-                    return res.status(400).send('no such person in the db');
-                } else {
-                    for (let k of keys) {
-                        admin[k] = req.body[k];
-                    }
+        admin.set({
+            power: power || admin.power,
+            firstName: firstName || admin.firstName,
+            lastName: lastName || admin.lastName,
+            phoneNumber: phoneNumber || admin.phoneNumber
+        });
 
-                    try {
-                        await admin.save();
-                        res.send('successfully updated');
-                    } catch (ex) {
-                        let message = '';
-            
-                        for (field in ex.errors) {
-                            message += " & " + ex.errors[field].message;
-                        }
-            
-                        res.status(400).send(message);
-                    }}}}}}));
+        await admin.save();
+        
+        res.status(200).json({
+            status: 200,
+            message: 'success',
+            data: 'successfully updated'
+        })
+    }
+}));
 
-router.put('/:id/change-password',[ auth, admin ], wrap( async (req, res) => {
-    const id = req.params.id;
+router.put('/change-password', changePasswordMiddleware, wrapper ( async (req, res) => {
+    const id = req.user._id;
 
-    if (!val.isValid(id)) {
-        return res.status(404).send('you are very lost man,,,,')
+    const admin = await Admin.findById(id);
+    const savedPassword = admin.password;
+
+    const { oldPassword, newPassword } = req.body;
+
+    const isValid = await bcrypt.compare(oldPassword, savedPassword);
+    
+    if (!isValid) {
+        return res.status(400).json({
+            status: 400,
+            message: 'invalid inputs...'
+        })
     } else {
-        const { error } = validatePass(req.body);
-        if (error) {
-            return res.status(400).send(error.details[0].message)
-        } else {
-            const admin = await Admin.findById(id);
-            const savedPassword = admin.password;
-            const { oldPassword, newPassword } = req.body;
-            const isValid = await bcrypt.compare(oldPassword, savedPassword);
-            
-            if (!isValid) {
-                return res.status(400).send('invalid inputs...')
-            } else {
-                const salt = await bcrypt.genSalt(10);
-                const hashPassword = await bcrypt.hash(newPassword, salt);
-                admin.password = hashPassword;
-                await admin.save();
-                res.send('password successfully changed...');
-            }}}}));
+        const salt = await bcrypt.genSalt(10);
+        const hashPassword = await bcrypt.hash(newPassword, salt);
 
-            
-router.delete('/:id', [ auth, admin, ultimateAdmin ], wrap( async (req, res) => {
+        admin.password = hashPassword;
+        await admin.save();
+
+        res.status(200).json({
+            status: 200,
+            message: 'success',
+            data: 'password successfully changed...'
+        })
+    }
+}));
+
+router.delete('/remove/:id', deleteMiddleware, wrapper ( async (req, res) => {
     const { id } = req.params;
 
-    if (!val.isValid(id)) {
-        return res.status(404).send('invalid admin i....')
+    const admin = await Admin.findByIdAndRemove(id);
+
+    if (!admin) {
+        return res.status(404).json({
+            status: 404,
+            message: 'no such admin in the db...'
+        })
     } else {
-        const admin = await Admin.findByIdAndRemove(id);
-        if (!admin) {
-            return res.status(404).send('no such admin in the db...')
-        } else {
-            res.send(admin);
-        }
+        res.status(200).json({
+            status: 200,
+            message: 'success',
+            data: admin
+        })
     }
 }));
 
