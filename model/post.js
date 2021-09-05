@@ -56,6 +56,8 @@ function validatePost(inp) {
     return result;
 }
 
-module.exports.validatePost = validatePost;
-module.exports.Post = Post;
-module.exports.postSchema = postSchema;
+module.exports = {
+    Post,
+    postSchema,
+    validatePost
+}

@@ -1,5 +1,4 @@
 const express = require('express');
-const mongoose = require('mongoose');
 
 const router = express.Router();
 
@@ -18,11 +17,20 @@ const auth = require('../middlewares/auth');
 const admin = require('../middlewares/admin');
 const superAdmin = require('../middlewares/superAdmin');
 const idValidator = require('../middlewares/idValidator');
-const bodyValidator = require('../middlewares/bodyValidator');
-
-const val = mongoose.Types.ObjectId;
+const bodyValidator = require('../middlewares/bodyValidator')
 
 const superAdminMiddleware = [ auth, admin, superAdmin ];
+const idAdminMidlleware = [ idValidator, auth, admin ];
+const createClassMiddleware = [ bodyValidator(validateR), auth, admin, superAdmin ];
+const deleteMiddleware = [ idValidator, auth, admin, superAdmin ];
+const removeSubjectMiddleware = [ idValidator, bodyValidator(validateSubject), auth, admin ];
+const removeStudentMiddleware = [ idValidator, bodyValidator(validateStudent), auth, admin ];
+const propertyChangeMiddleware = [ idValidator, bodyValidator(validateRe), auth, admin ];
+const assignClassTeacherMiddleware = [ idValidator, bodyValidator(validateTeacher), auth, admin, superAdminMiddleware ];
+const injectOneSubject = [ idValidator, bodyValidator(validateSubject), auth, admin ];
+const injectSubjectsMiddleware = [ idValidator, bodyValidator(validateSubjects), auth, admin];
+const injectOneStudentMiddleware = [ bodyValidator(validateStudent), idValidator, auth, admin ];
+const studentsAddingMiddleware = [ idValidator, bodyValidator(validateStudents), auth, admin, superAdmin];
 
 router.get('/all-classes', adminMiddleware, wrapper ( async (req, res) => {
     const classes = await Class.find();
@@ -34,8 +42,7 @@ router.get('/all-classes', adminMiddleware, wrapper ( async (req, res) => {
     })
 }));
 
-const here = [ idValidator, auth, admin ]
-router.get('/:id', [ auth, admin ], wrapper ( async (req, res) => {
+router.get('/one-class/:id', idAdminMidlleware, wrapper ( async (req, res) => {
     const { id } = req.params;
 
     const classe = await Class.findById(id)
@@ -43,366 +50,331 @@ router.get('/:id', [ auth, admin ], wrapper ( async (req, res) => {
         .populate('students');
         
     if (!classe) {
-        return res.status(404).send('no such class in the database..')
+        return res.status(404).json({
+            status: 404,
+            message: 'no such class in the database..'
+        })
     } else {
-        res.send(classe)
+        res.status(200).json({
+            status: 200,
+            message: 'success',
+            data: classe
+        })
     }
 }));
 
-router.post('/', [ auth, admin, superAdmin ] , wrap( async (req, res) => {
-    const { error } = validateR(req.body);
-    if (error) {
-        return res.status(400).send(error.details[0].message)
+router.post('/create', createClassMiddleware , wrapper ( async (req, res) => {
+    const { name, specialProperty } = req.body;
+
+    const classe = new Class({ name, specialProperty });
+
+    await classe.save();
+
+    res.status(201).json({
+        status: 201,
+        message: 'success',
+        data: classe
+    })
+}));
+
+router.put('/:id/add-students', studentsAddingMiddleware, wrapper ( async (req, res) => {
+    const { id } = req.params;
+
+    const classe = await Class.findById(id);
+
+    if (!classe) {
+        return res.status(404).json({
+            status: 404,
+            message: 'no such class in db'
+        })
     } else {
-        const { name, specialProperty } = req.body;
-        const classe = new Class({
-            name,
-            specialProperty
+        const { students } = req.body;
+
+        students.forEach((student) => {
+            classe.students.push(student);
         });
 
-        try {
+        await classe.save();
+        res.send(classe);
+    }
+}));
+
+router.put('/:id/add-one-student', injectOneStudentMiddleware, wrapper ( async (req, res) => {
+    const { id } = req.params;
+
+    const classe = await Class.findById(id);
+
+    if (!classe) {
+        return res.status(404).json({
+            status: 404,
+            message: 'no such class in db'
+        })
+    } else {
+        const { student } = req.body;
+
+        const suB = await Student.findById(student);
+
+        if (!suB) {
+            return res.status(404).json({
+                status: 404,
+                message: 'no such student in database'
+            })
+        } else {
+            classe.students.push(student);
+
             await classe.save();
-            res.send(classe);
-        } catch (ex) {
-            let message = '';
 
-            for (field in ex.errors) {
-                message += " & " + ex.errors[field]
-            }
+            res.status(200).json({
+                status: 200,
+                message: 'success',
+                data: classe
+            })
+        }
+    }
+}));
 
-            res.status(400).send(message)
-        }}}));
+router.put('/add-subjects/:id', injectSubjectsMiddleware, wrapper ( async (req, res) => {
+    const { id } = req.params;
 
-router.put('/:id/add-students', [ auth, admin, superAdmin ], wrap( async (req, res) => {
-    const { error } = validateStudents(req.body);
-    if (error) {
-        return res.status(400).send(error.details[0].message)
+    const classe = await Class.findById(id);
+
+    if (!classe) {
+        return res.status(404).json({
+            status: 404,
+            message: 'no such class in db',
+        })
     } else {
-        if (!val.isValid(req.params.id)) {
-            return res.status(404).send('invalid course id')
-        } else {
-            const classe = await Class.findById(req.params.id);
-            if (!classe) {
-                return res.status(404).send('no such class in db');
-            } else {
-                const { students } = req.body;
+        const { subjects } = req.body;
 
-                try {
-                    students.forEach((el) => {
-                        classe.students.push(el)
-                    });
+        subjects.forEach((subject) => {
+            classe.subjects.push(subject)
+        });
 
-                    await classe.save();
-                    res.send(classe);
-                } catch (ex) {
-                    let message = '';
+        await classe.save();
 
-                    for (field in ex.errors) {
-                        message += " & " + ex.errors[field]
-                    }
+        res.status(200).json({
+            status: 200,
+            message: 'success',
+            data: classe
+        })
+    }
+}));
 
-                    res.status(400).send(message)
-                }}}}}));
+router.put('/add-one-subject/:id', injectOneSubject, wrapper ( async (req, res) => {
+    const { id } = req.params;
 
-router.put('/:id/add-one-student', [ auth, admin ], wrap( async (req, res) => {
-    const { error } = validateStudent(req.body);
-    if (error) {
-        return res.status(400).send(error.details[0].message)
+    const classe = await Class.findById(id);
+
+    if (!classe) {
+        return res.status(404).json({
+            status: 404,
+            message: 'no such class in db'
+        })
     } else {
-        if (!val.isValid(req.params.id)) {
-            return res.status(404).send('invalid course id')
+        const { subject } = req.body;
+        const suB = await Subject.findById(subject);
+
+        if (!suB) {
+            return res.status(404).json({
+                status: 400,
+                message: 'no such subject in database'
+            })
         } else {
-            const classe = await Class.findById(req.params.id);
-            if (!classe) {
-                return res.status(404).send('no such class in db');
-            } else {
-                const { student } = req.body;
+            classe.subjects.push(subject);
 
-                const suB = await Student.findById(student);
-                if (!suB) {
-                    return res.status(400).send('no such student in database');
-                } else {
+            await classe.save();
 
-                    try {
-                        classe.students.push(student)
-                        await classe.save();
-                        res.send(classe);
-                    } catch (ex) {
-                        let message = '';
-    
-                        for (field in ex.errors) {
-                            message += " & " + ex.errors[field]
-                        }
-    
-                        res.status(400).send(message)
-                    }}}}}}));
+            res.status(200).json({
+                status: 200,
+                message: 'success',
+                data: classe
+            })
+        }
+    }
+}));
 
+router.put('/add-class-teacher/:id', assignClassTeacherMiddleware, wrapper ( async (req, res) => {
+    const classe = await Class.findById(id);
 
-
-router.put('/:id/add-subjects', [ auth, admin ], wrap( async (req, res) => {
-    const { error } = validateSubjects(req.body);
-    
-    if (error) {
-        return res.status(400).send(error.details[0].message)
+    if (!classe) {
+        return res.status(404).json({
+            status: 404,
+            message: 'invalid class id...'
+        })
     } else {
-        if (!val.isValid(req.params.id)) {
-            return res.status(404).send('invalid course id')
+        const { classTeacherId } = req.body;
+
+        const teacher = await Teacher.findById(classTeacherId);
+
+        if (!teacher) {
+            return res.status(400).json({
+                status: 404,
+                message: 'no such teacher in the db'
+            })
         } else {
-            const classe = await Class.findById(req.params.id);
-            if (!classe) {
-                return res.status(404).send('no such class in db');
-            } else {
-                const { subjects } = req.body;
+            classe.classTeacher = {
+                _id: teacher._id,
+                name: `${ teacher.firstName }, ${ teacher.lastName }`
+            };
 
-                try {
-                    subjects.forEach((el) => {
-                        classe.subjects.push(el)
-                    });
+            await classe.save();
 
-                    await classe.save();
-                    res.send(classe);
-                } catch (ex) {
-                    let message = '';
+            res.status(200).json({
+                status: 200,
+                message: 'success',
+                data: classe
+            })
+        }
+    }
+}));
 
-                    for (field in ex.errors) {
-                        message += " & " + ex.errors[field]
-                    }
+router.put('/change-class-teacher/:id', assignClassTeacherMiddleware, wrapper ( async (req, res) => {
+    const { id } = req.params;
 
-                    res.status(400).send(message)
-                }}}}}));
+    const classe = await Class.findById(id);
 
-
-router.put('/:id/add-one-subject',[ auth, admin ], wrap( async (req, res) => {
-    const { error } = validateSubject(req.body);
-    if (error) {
-        return res.status(400).send(error.details[0].message);
+    if (!classe) {
+        return res.status(404).json({
+            status: 404,
+            message: 'invalid class id...'
+        })
     } else {
-        if (!val.isValid(req.params.id)) {
-            return res.status(404).send('invalid class id');
+        const { classTeacherId } = req.body;
+
+        const teacher = await Teacher.findById(classTeacherId);
+
+        if (!teacher) {
+            return res.status(400).json({
+                status: 400,
+                message: 'no such teacher in the db'
+            })
         } else {
-            const classe = await Class.findById(req.params.id);
-            if (!classe) {
-                return res.status(404).send('no such class in db');
-            } else {
-                const { subject } = req.body;
-                const suB = await Subject.findById(subject);
-                if (!suB) {
-                    return res.status(400).send('no such subject in database');
-                } else {
-                    try {
-                        classe.subjects.push(subject)
-                        await classe.save();
-                        res.send(classe);
-                    } catch (ex) {
-                        let message = '';
-    
-                        for (field in ex.errors) {
-                            message += " & " + ex.errors[field]
-                        }
-    
-                        res.status(400).send(message)
-                    }}}}}}));
+            classe.classTeacher = {
+                _id: teacher._id,
+                name: `${ teacher.firstName }, ${ teacher.lastName }`
+            };
 
-router.put('/:id/add-class-teacher', [ auth, admin, superAdmin ], wrap( async (req, res) => {
-    const { error } = validateTeacher(req.body);
+            await classe.save();
 
-    if (error) {
-        return res.status(400).send(error.details[0].message)
+            res.status(200).json({
+                status: 200,
+                message: 'success',
+                data: classe
+            })
+        }
+    }
+}));
+
+router.put('/change-property/:id', propertyChangeMiddleware, wrapper ( async (req, res) => {
+    const { id } = req.params;
+
+    const classe = await Class.findById(id);
+
+    if (!classe) {
+        return res.status(404).json({
+            status: 404,
+            message: 'no such class in the db'
+        })
     } else {
-        const id = req.params.id;
-        if (!val.isValid(id)) {
-            return res.status(404).send('invalid class id...');
-        } else {
-            const classe = await Class.findById(id);
-            if (!classe) {
-                return res.status(404).send('invalid class id...');
-            } else {
-                const { classTeacherId } = req.body;
-                const teacher = await Teacher.findById(classTeacherId);
-                if (!teacher) {
-                    return res.status(400).send('no such teacher in the db')
-                } else {
-                    classe.classTeacher = {
-                        _id: teacher._id,
-                        name: `${ teacher.firstName }, ${ teacher.lastName }`
-                    };
+        const { name, specialProperty } = req.body;
 
-                    try {
-                        await classe.save();
-                        res.send(classe);
-                    } catch (ex) {
-                        let message = '';
-    
-                        for (field in ex.errors) {
-                            message += " & " + ex.errors[field]
-                        }
-    
-                        res.status(400).send(message)
-                    }}}}}}));
+        classe.set({
+            name: name || classe.name,
+            specialProperty: specialProperty || classe.specialProperty
+        });
 
-router.put('/:id/change-class-teacher', [ auth, admin, superAdmin ], wrap( async (req, res) => {
-    const { error } = validateTeacher(req.body);
+        await classe.save();
 
-    if (error) {
-        return res.status(400).send(error.details[0].message)
-    } else {
-        const id = req.params.id;
-        if (!val.isValid(id)) {
-            return res.status(404).send('invalid class id...');
-        } else {
-            const classe = await Class.findById(id);
-            if (!classe) {
-                return res.status(404).send('invalid class id...');
-            } else {
-                const { classTeacherId } = req.body;
-                const teacher = await Teacher.findById(classTeacherId);
+        res.status(200).json({
+            status: 200,
+            message: 'success',
+            data: classe
+        })
+    }
+}));
 
-                if (!teacher) {
-                    return res.status(400).send('no such teacher in the db')
-                } else {
-                    classe.classTeacher = {
-                        _id: teacher._id,
-                        name: `${ teacher.firstName }, ${ teacher.lastName }`
-                    };
-
-                    try {
-                        await classe.save();
-                        res.send(classe);
-                    } catch (ex) {
-                        let message = '';
-    
-                        for (field in ex.errors) {
-                            message += " & " + ex.errors[field]
-                        }
-    
-                        res.status(400).send(message)
-                    }}}}}}));
-
-router.put('/:id/change-property',[ auth, admin ], wrap( async (req, res) => {
-    const { error } = validateRe(req.body);
-    const id = req.params.id;
-
-    if (error) {
-        return res.status(400).send(error.details[0].message)
-    } else {
-        if (!val.isValid(id)) {
-            return res.status(404).send('invalid course id')
-        } else {
-            const classe = await Class.findById(id);
-            if (!classe) {
-                return res.status(404).send('no such class in the db');
-            } else {
-                let keys = Object.keys(req.body);
-
-                if (keys.includes('subjects') || keys.includes('students')) {
-                    return res.status(400).send('this is not the right place to add subjects or students')
-                }
-
-                for(let n of keys) {
-                    classe[n] = req.body[n]
-                }
-
-                try {
-                    await classe.save();
-                    res.send(classe);
-                } catch (ex) {
-                    let message = '';
-
-                    for (field in ex.errors) {
-                        message += " & " + ex.errors[field]
-                    }
-
-                    res.status(400).send(message)
-                }}}}}));
-
-router.put('/:id/remove-student', [auth, admin ], wrap( async (req, res) => {
+router.put('/remove-student/:id',  removeStudentMiddleware, wrapper ( async (req, res) => {
     const id = req.params.id;
     const studentId = req.body.student;
 
-    if (!val.isValid(studentId)) {
-        return res.status(400).send('invalid student id')
-    }
+    const classe = await Class.findById(id);
 
-    const { error } = validateStudent(req.body);
-
-    if (error) {
-        return res.status(400).send(error.details[0].message)
+    if (!classe) {
+        return res.status(404).json({
+            status: 404,
+            message: 'no such class in the db'
+        })
     } else {
-        if (!val.isValid(id)) {
-            return res.status(404).send('invalid course id')
+        const student = classe.students.id(studentId);
+
+        if (!student) {
+            return res.status(404).json({
+                status: 404,
+                message: 'student not a member of class'
+            })
         } else {
-            const classe = await Class.findById(id);
-            if (!classe) {
-                return res.status(404).send('no such class in the db');
-            } else {
-                const student = classe.students.id(studentId);
-                if (!student) {
-                    return res.status(404).send('student not a member of class');
-                } else {
-                    try {
-                        student.remove();
-                        await classe.save();
-                        res.send(student);
-                    } catch (ex) {
-                        let message = '';
+            student.remove();
 
-                        for (field in ex.errors) {
-                            message += " & " + ex.errors[field]
-                        }
+            await classe.save();
 
-                        res.status(400).send(message)
-                    }}}}}}));
+            res.status(200).json({
+                status: 200,
+                message: 'success',
+                data: classe
+            })
+        }
+    }
+}));
 
-router.put('/:id/remove-subject',[ auth, admin ], wrap( async (req, res) => {
-    const id = req.params.id;
+router.put('/remove-subject/:id/',removeSubjectMiddleware, wrapper ( async (req, res) => {
+    const { id } = req.params;
     const subjectId = req.body.subject;
 
-    if (!val.isValid(subjectId)) {
-        return res.status(400).send('invalid student id')
+    const classe = await Class.findById(id);
+
+    if (!classe) {
+        return res.status(404).json({
+            status: 404,
+            message: 'no such class in the db'
+        })
+    } else {
+        const subject = classe.subjects.id(subjectId);
+
+        if (!subject) {
+            return res.status(404).json({
+                status: 404,
+                message: 'student not a member of class'
+            })
+        } else {
+            subject.remove();
+            await classe.save();
+
+            res.status(200).json({
+                status: 200,
+                message: 'success',
+                data: subject
+            })
+        }
     }
+}));
 
-    const { error } = validateSubject(req.body)
+router.delete('/remove-class/:id',deleteMiddleware, wrapper ( async (req, res) => {
+    const { id } = req.params;
 
-    if (error) {
-        return res.status(400).send(error.details[0].message)
+    const classe = await Class.findByIdAndRemove(id);
+
+    if (!classe) {
+        return res.status(404).json({
+            status: 404,
+            message: 'no such classs in the db'
+        })
     } else {
-        if (!val.isValid(id)) {
-            return res.status(404).send('invalid course id')
-        } else {
-            const classe = await Class.findById(id);
-            if (!classe) {
-                return res.status(404).send('no such class in the db');
-            } else {
-                const subject = classe.subjects.id(subjectId);
-                if (!subject) {
-                    return res.status(404).send('student not a member of class');
-                } else {
-                    try {
-                        subject.remove();
-                        await classe.save();
-                        res.send(subject)
-                    } catch (ex) {
-                        let message = '';
-
-                        for (field in ex.errors) {
-                            message += " & " + ex.errors[field]
-                        }
-
-                        res.status(400).send(message)
-                    }}}}}}));
-
-
-router.delete('/:id',[ auth, admin, superAdmin ], wrap( async (req, res) => {
-    const id = req.params.id;
-
-    if (!val.isValid) {
-        return res.status(404).send('you arelost man');
-    } else {
-        const classe = await Class.findByIdAndRemove(id);
-        if (!classe) {
-            return res.status(404).send('no such classs in the db');
-        } else {
-            res.send(classe);
-        }}})); 
+        res.status(200).json({
+            status: 200,
+            message: 'success',
+            data: classe
+        })
+    }
+})); 
 
 module.exports = router;

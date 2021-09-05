@@ -165,13 +165,15 @@ function validatePut(inp) {
     return result;
 }
 
-module.exports.Class = Class
-module.exports.validate = validate;
-module.exports.validatePut = validatePut;
-module.exports.validateR = validateR;
-module.exports.validateStudents = validateStudents;
-module.exports.validateStudent = validateStudent;
-module.exports.validateTeacher = validateTeacher;
-module.exports.validateRe = validateRe;
-module.exports.validateSubject = validateSubject;
-module.exports.validateSubjects = validateSubjects;
+module.exports = {
+    Class,
+    validate,
+    validatePut, 
+    validateR,
+    validateStudents, 
+    validateStudent,
+    validateTeacher, 
+    validateRe,
+    validateSubject,
+    validateSubjects
+}

@@ -98,6 +98,8 @@ function validatePut(inp)  {
     return result;
 }
 
-module.exports.Subject = Subject;
-module.exports.validate = validate;
-module.exports.validatePut = validatePut;
+module.exports = {
+    Subject,
+    validate,
+    validatePut
+}

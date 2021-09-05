@@ -49,8 +49,8 @@ function validateM(inp) {
     return result;
 }
 
-
-
-module.exports.validateM = validateM;
-module.exports.Message = Message;
-module.exports.messageSchema = messageSchema;
+module.exports = {
+    Message,
+    validateM,
+    messageSchema
+}

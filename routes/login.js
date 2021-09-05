@@ -1,26 +1,40 @@
 const express = require('express');
-const router = express.Router();
-const { validateLog, Parent } = require('../model/parentM');
 const bcrypt = require('bcrypt');
-const wrap = require('../middlewares/wrap');
 
-router.post('/', wrap (async (req, res) => {
-    const { error } = validateLog(req.body);
+const router = express.Router();
 
-    if (error) {
-        return res.status(400).send(error.details[0].message);
+const wrapper = require('../middlewares/wrap');
+const bodyValidator = require('../middlewares/bodyValidator');
+
+const { validateLog, Parent } = require('../model/parentM');
+
+router.post('/', bodyValidator(validateLog), wrapper ( async (req, res) => {
+    const { phoneNumber, password } = req.body;
+    const parent = await Parent.findOne({ phoneNumber: phoneNumber });
+
+    if (!parent) {
+        return res.status(400).json({
+            status: 400,
+            message: 'invalid phonenumber or password...'
+        })
     } else {
-        const { phoneNumber, password } = req.body;
-        const parent = await Parent.findOne({ phoneNumber: phoneNumber });
-        if (!parent) {
-            return res.status(400).send('invalid phonenumber or password...')
+        const isVal = await bcrypt.compare(password, parent.password);
+
+        if (!isVal) {
+            return res.status(400).json({
+                status: 400,
+                message: 'invalid phonenumber or password...'
+            })
         } else {
-            const isVal = await bcrypt.compare(password, parent.password);
-            if (!isVal) {
-                return res.status(400).send('invalid username or password')
-            } else {
-                let token = parent.generateToken();
-                res.header('x-auth-token', token).send('welcome back mama')
-            }}}}));
+            let token = parent.generateToken();
+
+            res.header('x-auth-token', token).json({
+                status: 200,
+                message: 'success',
+                data: parent
+            })
+        }
+    }
+}));
 
 module.exports = router;

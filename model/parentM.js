@@ -160,9 +160,11 @@ function validateByClass(inp) {
     return result;
 }
 
-module.exports.Parent = Parent;
-module.exports.validate = validate;
-module.exports.validateLog = validateLog;
-module.exports.validatePut = validatePut;
-module.exports.validatePass = validatePass;
-module.exports.validateByClass = validateByClass;
+module.exports = {
+    Parent,
+    validate,
+    validateLog,
+    validatePut, 
+    validatePass,
+    validateByClass
+}

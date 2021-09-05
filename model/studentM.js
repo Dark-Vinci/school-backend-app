@@ -144,6 +144,8 @@ function validatePut(inp) {
     return result;
 }
 
-module.exports.Student = Student;
-module.exports.validate = validate;
-module.exports.validatePut = validatePut;
+module.exports = {
+    Student,
+    validate,
+    validatePut
+}

@@ -37,6 +37,12 @@ const homeSchema = new mongoose.Schema({
     isPublished: {
         type: Boolean,
         default: false
+    },
+
+    createdAt: {
+        type: Date,
+        default: Date.now,
+        required: true
     }
 });
 
@@ -105,6 +111,8 @@ function validatePut(inp) {
     return result;
 }
 
-module.exports.Home = Home;
-module.exports.validate = validate;
-module.exports.validatePut = validatePut;
+module.exports = {
+    Home,
+    validate,
+    validatePut
+}

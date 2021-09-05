@@ -167,8 +167,10 @@ function validateBy(inp) {
     return result;
 }
 
-module.exports.Teacher = Teacher;
-module.exports.validate = validate;
-module.exports.validatePut = validatePut;
-module.exports.validateAdd = validateAdd;
-module.exports.validateBy = validateBy;
+module.exports = {
+    Teacher,
+    validate,
+    validatePut,
+    validateAdd,
+    validateBy
+}

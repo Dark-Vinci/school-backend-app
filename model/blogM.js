@@ -109,6 +109,8 @@ function validatePut(inp) {
     return result;
 }
 
-module.exports.validate = validate;
-module.exports.validatePut = validatePut;
-module.exports.Blog = Blog;
+module.exports = {
+    Blog,
+    validate,
+    validatePut
+}
